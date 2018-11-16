@@ -12,6 +12,7 @@ import os
 import nibabel as nib
 from tqdm import tqdm
 from model import build_model
+from model import critic
 
 task = 'all' #all, edema, necrotic, enhance
 test_type = 'small' #small, half, all
@@ -21,10 +22,10 @@ save_lgg_path = './result/{0}/LGG/'.format(str(task))
 data_path = './data/MICCAI_BraTS17_Data_Training/HGG/' # ubuntu data path
 #data_path = './data/MICCAI_BraTS17_Data_Training_IPP/MICCAI_BraTS17_Data_Training/HGG/' #windows
 batch_size = 10
-#HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
-#LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
-HGG_data_path = 'data/temp/HGG'
-LGG_data_path = 'data/temp/LGG'
+HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
+LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
+#HGG_data_path = 'data/temp/HGG'
+#LGG_data_path = 'data/temp/LGG'
 
 
 
@@ -68,7 +69,14 @@ if not os.path.exists(save_hgg_path):
 sess = tf.Session()
 x = tf.placeholder(tf.float32, [batch_size, 128, 128, 4])
 y = tf.placeholder(tf.float32, [batch_size, 128, 128, 1])
+critic_holder = tf.placeholder(tf.float32, [batch_size, 128, 128, 4])
 model_test = build_model(x, reuse=False)
+critic_test = critic(x, critic_holder, reuse=False)
+#----------------------sign parameter-----------
+critic_last = tf.reduce_mean(tf.abs(critic_test[-1]))
+sign = tf.exp(-10*critic_last)
+
+#----------------------restore------------------
 pre_model_name = './checkpoints/u_net_{0}.ckpt'.format(task)
 pre_step_num = './checkpoints/u_net_{0}.txt'.format(task)
 init = tf.global_variables_initializer()
@@ -93,11 +101,22 @@ def produce_batch_seg(input_data):
     feed_dict_3 = {x:right_up}
     feed_dict_4 = {x:right_down}
     
-    seg_out[:, :128, :128, :] = sess.run(model_test, feed_dict=feed_dict_1)
-    seg_out[:, :128, 52:, :] = sess.run(model_test, feed_dict=feed_dict_2)
-    seg_out[:, 52:, :128, :] = sess.run(model_test, feed_dict=feed_dict_3)
-    seg_out[:, 52:, 52:, :] = sess.run(model_test, feed_dict=feed_dict_4)
-    return seg_out
+    seg_1 = sess.run(model_test, feed_dict=feed_dict_1)
+    seg_2 = sess.run(model_test, feed_dict=feed_dict_2)
+    seg_3 = sess.run(model_test, feed_dict=feed_dict_3)
+    seg_4 = sess.run(model_test, feed_dict=feed_dict_4)
+    #----------sign parameters--------------
+    feed_dict_1 = {x:left_up, critic_holder: seg_1}
+    feed_dict_2 = {x:left_down, critic_holder: seg_2}
+    feed_dict_3 = {x:right_up, critic_holder: seg_3}
+    feed_dict_4 = {x:right_down, critic_holder: seg_4}    
+    
+    sign_1 = sess.run(sign, feed_dict=feed_dict_1)
+    sign_2 = sess.run(sign, feed_dict=feed_dict_2)
+    sign_3 = sess.run(sign, feed_dict=feed_dict_3)
+    sign_4 = sess.run(sign, feed_dict=feed_dict_4)
+    sign_single_list = [sign_1, sign_2, sign_3, sign_4]
+    return seg_out, np.mean(sign_single_list)
 
 def produce_whole_seg(input_path, file_name):
     '''
@@ -106,6 +125,7 @@ def produce_whole_seg(input_path, file_name):
     temp_data = []
     train_data = []
     whole_seg = []
+    sign_seg = []
     seg_out = np.zeros([180, 180, 128], dtype=np.float32)
     for i in data_types:
         MRI_PATH = os.path.join(input_path, file_name, file_name+'_{}.nii.gz'.format(i))
@@ -121,12 +141,14 @@ def produce_whole_seg(input_path, file_name):
     train_data = np.asarray(train_data)
     for i in range(12):
         batch_input = train_data[10*i:(10*i+10), ...]
-        batch_seg = produce_batch_seg(batch_input)
+        batch_seg, batch_sign = produce_batch_seg(batch_input)
         whole_seg.append(batch_seg)
+        sign_seg.append(batch_sign)
             
     batch_input = train_data[-10:, ...]
-    batch_seg = produce_batch_seg(batch_input)
+    batch_seg, batch_sign = produce_batch_seg(batch_input)
     whole_seg.append(batch_seg[2:, ...])
+    sign_seg.append(batch_sign) #------------self define parameter
     whole_seg = np.concatenate(whole_seg, axis=0)
     for i in range(128):
         seg_out[:,:, i] = np.squeeze(whole_seg[i, ...])
@@ -148,7 +170,7 @@ def produce_whole_seg(input_path, file_name):
     else:
         assert False, 'task wrong'
     
-    return seg_out, gt_img, gt_affine
+    return seg_out, gt_img, gt_affine, np.min(sign_seg)
 
 def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2), smooth=1e-5):
     """Soft dice (Sørensen or Jaccard) coefficient for comparing the similarity
@@ -198,18 +220,22 @@ def store_MRI(path, seg_img, seg_affine):
 #----------------testing dice score-------------
 hgg_dice_list = []
 lgg_dice_list = []
+
+hgg_sign_list = []
+lgg_sign_list = []
 print('Prepare HGG test ')
 for i in tqdm(range(len(HGG_name_list))):
     dir_path = HGG_data_path
     file_path = HGG_name_list[i]
     save_path = os.path.join(save_hgg_path, file_path+'_seg.nii.gz')
-    seg, gt, affine = produce_whole_seg(dir_path, file_path)
+    seg, gt, affine, sign_score = produce_whole_seg(dir_path, file_path)
     store_MRI(save_path, seg, affine)
     hgg_dice_list.append(sess.run(dice_coe(seg, gt)))
+    hgg_sign_list.append(sign_score)
 #    if i%(len(HGG_name_list)//4) == 0:
 #        print('Testing {:.1f}%'.format(i/len(HGG_name_list)*100))
 np.savetxt('./result/{}_hgg_dice.txt'.format(task), hgg_dice_list)
-
+np.savetxt('./result/{}_hgg_sign.txt'.format(task), hgg_sign_list)
 print('Prepare LGG test ')
 for i in tqdm(range(len(LGG_name_list))):
     dir_path = LGG_data_path

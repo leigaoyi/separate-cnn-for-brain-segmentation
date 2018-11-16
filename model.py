@@ -6,6 +6,7 @@ Created on Mon Nov  5 19:51:56 2018
 """
 
 import tensorflow as tf
+from ops import mask_seg_input
 #import numpy as np
 
 
@@ -104,11 +105,12 @@ def u_net(inputs, reuse=False):
         conv10 = slim.conv2d(conv9, 1, 1, activation_fn=tf.nn.sigmoid)
         return conv10
         
-def critic(inputs, reuse=False):
+def critic(inputs_img, inputs_seg, reuse=False):
     '''
     inputs : mask of seg and MRI data, [10, 128, 128, 4]
     outputs : layers output 
     '''
+    inputs = mask_seg_input(inputs_img, inputs_seg)
     with tf.variable_scope('critic', reuse=reuse):
         conv1 = slim.conv2d(inputs, 64, 4, stride=2)
         conv1 = tf.nn.leaky_relu(conv1)

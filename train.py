@@ -19,7 +19,7 @@ import time
 BATCH_SIZE = 10
 lr = 0.0001
 beta1 = 0.9
-epoch = 100
+epoch = 50
 check_dir = './checkpoints/'
 
 input_holder = tf.placeholder(tf.float32, [BATCH_SIZE, 128, 128, 4])
@@ -30,10 +30,10 @@ if not os.path.exists(check_dir):
 
 #================build_model============
 model_predict = build_model(input_holder)
-false_mask = mask_seg_input(input_holder, model_predict)
-true_mask = mask_seg_input(input_holder, label_holder)
-critic_true = critic(true_mask)
-critic_false = critic(false_mask, reuse=True)
+critic_true = critic(input_holder, label_holder)
+critic_false = critic(input_holder, model_predict, reuse=True)
+fake_last_layer = tf.reduce_mean(tf.abs(critic_false[-1]))
+
 #================dice function============
 def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2, 3), smooth=1e-5):
     """Soft dice (Sørensen or Jaccard) coefficient for comparing the similarity
@@ -80,7 +80,7 @@ for i in range(len(critic_true)):
     layer_mean = tf.reduce_mean(layer_abs)
     adverse_loss += layer_mean
 
-loss = seg_loss + 0.5 * adverse_loss
+loss = seg_loss + 1 * adverse_loss
 #==============optimization function============
 
 variable_list = tf.trainable_variables()
@@ -137,12 +137,14 @@ def main(task):
         print('Restor task {1} step {0} well.'.format(step, task))
     #---------------------prepare data well------
     print('data process over')
+    fake_last_list = []
     for i in range(epoch):   
         num_batch = len(data)//BATCH_SIZE
         print('Each epoch contains {} stps'.format(num_batch))
         loss_list = []
         adverse_list = []
         start_epoch = time.time()
+
         for j in range(num_batch):
             start = time.time()
             batch_data = data[j*BATCH_SIZE:(j+1)*BATCH_SIZE]
@@ -157,16 +159,19 @@ def main(task):
             sess.run(optimization, feed_dict)
             loss_list.append(sess.run(loss, feed_dict=feed_dict))
             adverse_list.append(sess.run(adverse_loss, feed_dict=feed_dict))
+            fake_last_list.append(sess.run(fake_last_layer, feed_dict=feed_dict))
             #----------------if seGAN used--------------
             step += 1 # count
             end = time.time() 
             if step%100 == 0:
                 interval = (end-start)*100/60
                 print('step {0}, loss {1:.3f}, took {2:.2f} min '.format(step, np.mean(loss_list), interval))
-                print('Adverse loss {0:.4f}\n'.format(np.mean(adverse_list)))
+                print('Adverse loss {0:.4f}'.format(np.mean(adverse_list)))
+                print('Fake last layer  {:.4f} \n'.format(fake_last_list[-1]))
             if step % 500 == 0:
                 saver.save(sess, check_dir+'u_net_{0}.ckpt'.format(task))
                 np.savetxt(check_dir+'u_net_{0}.txt'.format(task), [step])
+                np.savetxt(check_dir+'fake_indice_{0}.txt'.format(task), fake_last_list)
         end_epoch = time.time()
         print('Task {2} Epoch {0}/{1}'.format(i+1, epoch, task))
         print('Take {:.2f} min'.format((end_epoch-start_epoch)/60))
