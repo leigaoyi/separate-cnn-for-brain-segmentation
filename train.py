@@ -7,8 +7,8 @@ Created on Tue Nov  6 08:50:59 2018
 
 from load_data import create_input_data
 
-from model_separate import build_model
-from model_separate import u_net
+from model import build_model
+from model import u_net
 import numpy as np
 import tensorflow as tf
 import os 
@@ -133,7 +133,7 @@ def main(task):
             start = time.time()
             batch_data = data[j*BATCH_SIZE:(j+1)*BATCH_SIZE]
             batch_label = label[j*BATCH_SIZE:(j+1)*BATCH_SIZE]
-            # random crop to [?, 128, 128, 4] for balance the background and features
+            # random crop to [10, 128, 128, 4] for balance the background and features
             random_crop = np.random.randint(low=0, high=52)
             batch_data = batch_data[:, random_crop:(random_crop+128),random_crop:(random_crop+128),:]
             batch_label = batch_label[:, random_crop:(random_crop+128),random_crop:(random_crop+128),:]            
@@ -151,7 +151,7 @@ def main(task):
                 saver.save(sess, check_dir+'u_net_{0}.ckpt'.format(task))
                 np.savetxt(check_dir+'u_net_{0}.txt'.format(task), [step])
         end_epoch = time.time()
-        print('Task {2} Epoch {0}/{1}'.format(i, epoch, task))
+        print('Task {2} Epoch {0}/{1}'.format(i+1, epoch, task))
         print('Take {:.2f} min'.format((end_epoch-start_epoch)/60))
         print('loss {:.4f} \n'.format(np.mean(loss_list)))
     return 0

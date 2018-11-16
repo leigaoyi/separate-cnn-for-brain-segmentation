@@ -10,10 +10,10 @@ import numpy as np
 import glob
 import os
 import nibabel as nib
+from tqdm import tqdm
+from model import build_model
 
-from model_separate import build_model
-
-task = 'enhance'
+task = 'all' #all, edema, necrotic, enhance
 test_type = 'half' #small, half, all
 save_dir = 'checkpoints'
 save_hgg_path = './result/{0}/HGG/'.format(str(task))
@@ -77,7 +77,7 @@ sess.run(init)
 saver = tf.train.Saver()
 saver.restore(sess, pre_model_name)
 step = int(np.loadtxt(pre_step_num))
-print('Restore well')
+print('Restore task {} well'.format(task))
 
 def produce_batch_seg(input_data):
     '''
@@ -106,10 +106,10 @@ def produce_whole_seg(input_path, file_name):
     temp_data = []
     train_data = []
     whole_seg = []
-    seg_out = np.zeros([180, 180, 155], dtype=np.float32)
+    seg_out = np.zeros([180, 180, 128], dtype=np.float32)
     for i in data_types:
         MRI_PATH = os.path.join(input_path, file_name, file_name+'_{}.nii.gz'.format(i))
-        img = nib.load(MRI_PATH).get_data()[30:210, 30:210, :]
+        img = nib.load(MRI_PATH).get_data()[30:210, 30:210, 13:141]
         mean = np.mean(img)
         std = np.std(img)
         img = (img-mean)/std
@@ -119,22 +119,22 @@ def produce_whole_seg(input_path, file_name):
                         temp_data[2][:,:,i], temp_data[2][:,:,i]], axis=2)
         train_data.append(cat)
     train_data = np.asarray(train_data)
-    for i in range(15):
+    for i in range(12):
         batch_input = train_data[10*i:(10*i+10), ...]
         batch_seg = produce_batch_seg(batch_input)
         whole_seg.append(batch_seg)
             
     batch_input = train_data[-10:, ...]
     batch_seg = produce_batch_seg(batch_input)
-    whole_seg.append(batch_seg[5:, ...])
+    whole_seg.append(batch_seg[2:, ...])
     whole_seg = np.concatenate(whole_seg, axis=0)
-    for i in range(155):
+    for i in range(128):
         seg_out[:,:, i] = np.squeeze(whole_seg[i, ...])
     seg_out = np.array(seg_out)
     seg_out = np.squeeze(seg_out)
 #    print('seg_out shape ',seg_out.shape)
     gt_path = os.path.join(input_path, file_name, file_name+'_seg.nii.gz')
-    gt_img = nib.load(gt_path).get_data()[30:210, 30:210, :]
+    gt_img = nib.load(gt_path).get_data()[30:210, 30:210, 13:141]
     gt_affine = nib.load(gt_path).get_affine()
 #    print('groud truth shape ', gt_img.shape)
     if task == 'all':
@@ -188,7 +188,7 @@ def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2), smooth=1e-5):
 
 def store_MRI(path, seg_img, seg_affine):
     fig = np.zeros([240, 240, 155], dtype=np.float32)
-    fig[30:210, 30:210, :] = seg_img
+    fig[30:210, 30:210, 13:141] = seg_img
     fig = (fig>0.2).astype(np.int8)
     fig_nii = nib.Nifti1Image(fig, affine=seg_affine)
     nib.save(fig_nii, path)
@@ -199,27 +199,27 @@ def store_MRI(path, seg_img, seg_affine):
 hgg_dice_list = []
 lgg_dice_list = []
 print('Prepare HGG test ')
-for i in range(len(HGG_name_list)):
+for i in tqdm(range(len(HGG_name_list))):
     dir_path = HGG_data_path
     file_path = HGG_name_list[i]
     save_path = os.path.join(save_hgg_path, file_path+'_seg.nii.gz')
     seg, gt, affine = produce_whole_seg(dir_path, file_path)
     store_MRI(save_path, seg, affine)
     hgg_dice_list.append(sess.run(dice_coe(seg, gt)))
-    if i%(len(HGG_name_list)//4) == 0:
-        print('Testing {:.1f}%'.format(i/len(HGG_name_list)*100))
+#    if i%(len(HGG_name_list)//4) == 0:
+#        print('Testing {:.1f}%'.format(i/len(HGG_name_list)*100))
 np.savetxt('./result/{}_hgg_dice.txt'.format(task), hgg_dice_list)
 
 print('Prepare LGG test ')
-for i in range(len(LGG_name_list)):
+for i in tqdm(range(len(LGG_name_list))):
     dir_path = LGG_data_path
     file_path = LGG_name_list[i]
     save_path = os.path.join(save_lgg_path, file_path+'_seg.nii.gz')
     seg, gt, affine = produce_whole_seg(dir_path, file_path)
     store_MRI(save_path, seg, affine)
     lgg_dice_list.append(sess.run(dice_coe(seg, gt)))
-    if i%(len(LGG_name_list)//4) == 0:
-        print('Testing {:.1f}%'.format(i/len(HGG_name_list)*100))
+#    if i%(len(LGG_name_list)//4) == 0:
+#        print('Testing {:.1f}%'.format(i/len(HGG_name_list)*100))
 np.savetxt('./result/{}_lgg_dice.txt'.format(task), lgg_dice_list)
 print('task : {}'.format(task))
 print('step : {}'.format(step))

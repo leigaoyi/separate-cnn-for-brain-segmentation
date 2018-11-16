@@ -11,7 +11,7 @@ import nibabel as nib
 #import pickle
 
 #======================Setting================
-DATA_SIZE = 'half' # (small, half or all)
+DATA_SIZE = 'small' # (small, half or all)
 HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
 LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
 #HGG_data_path = 'data/temp/HGG'
@@ -50,20 +50,23 @@ data_types = ['flair', 't1', 't1ce', 't2']
 #    mean_std = pickle.load(f)
 
 def create_input_data():
+    '''
+    crop into [180, 180, 128]
+    '''
     seg_collection = []
     data_collection = []
     for i in range(len(HGG_name_list)):
         temp_data = []
         for j in data_types:
             img_path = os.path.join(HGG_path_list[i],HGG_name_list[i]+'_{}.nii.gz'.format(j)) 
-            img = nib.load(img_path).get_data()[30:210, 30:210, :]
+            img = nib.load(img_path).get_data()[30:210, 30:210, 13:141]
             mean = np.mean(img)
             std = np.std(img)
             img = (img - mean)/std
             temp_data.append(img)
         #---------stack flair, t1, t1ce, t2---------
         label_path = os.path.join(HGG_path_list[i], HGG_name_list[i]+'_seg.nii.gz')
-        label = nib.load(label_path).get_data()[30:210, 30:210, :]
+        label = nib.load(label_path).get_data()[30:210, 30:210, 13:141]
         for j in range(temp_data[0].shape[2]):
             data_collection.append(np.stack([temp_data[0][:,:,j],
                                          temp_data[1][:,:,j],
@@ -75,14 +78,14 @@ def create_input_data():
         temp_data = []
         for j in data_types:
             img_path = os.path.join(LGG_path_list[i],LGG_name_list[i]+'_{}.nii.gz'.format(j)) 
-            img = nib.load(img_path).get_data()[30:210, 30:210, :]
+            img = nib.load(img_path).get_data()[30:210, 30:210, 13:141]
             mean = np.mean(img)# mean and std
             std = np.std(img)
             img = (img - mean)/std
             temp_data.append(img)
         #---------stack flair, t1, t1ce, t2---------
         label_path = os.path.join(LGG_path_list[i], LGG_name_list[i]+'_seg.nii.gz')
-        label = nib.load(label_path).get_data()[30:210, 30:210, :]
+        label = nib.load(label_path).get_data()[30:210, 30:210, 13:141]
         for j in range(temp_data[0].shape[2]):
             data_collection.append(np.stack([temp_data[0][:,:,j],
                                          temp_data[1][:,:,j],
