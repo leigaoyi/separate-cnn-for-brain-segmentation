@@ -8,7 +8,9 @@ Created on Tue Nov  6 08:50:59 2018
 from load_data import create_input_data
 
 from model import build_model
-from model import u_net
+from model import critic
+from ops import mask_seg_input
+
 import numpy as np
 import tensorflow as tf
 import os 
@@ -17,7 +19,7 @@ import time
 BATCH_SIZE = 10
 lr = 0.0001
 beta1 = 0.9
-epoch = 30
+epoch = 100
 check_dir = './checkpoints/'
 
 input_holder = tf.placeholder(tf.float32, [BATCH_SIZE, 128, 128, 4])
@@ -26,9 +28,13 @@ label_holder = tf.placeholder(tf.float32, [BATCH_SIZE, 128, 128, 1])
 if not os.path.exists(check_dir):
     os.makedirs(check_dir)
 
-#================loss function============
+#================build_model============
 model_predict = build_model(input_holder)
-
+false_mask = mask_seg_input(input_holder, model_predict)
+true_mask = mask_seg_input(input_holder, label_holder)
+critic_true = critic(true_mask)
+critic_false = critic(false_mask, reuse=True)
+#================dice function============
 def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2, 3), smooth=1e-5):
     """Soft dice (Sørensen or Jaccard) coefficient for comparing the similarity
     of two batch of data, usually be used for binary image segmentation
@@ -64,10 +70,17 @@ def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2, 3), smooth=1e-5
     ##
     dice = tf.reduce_mean(dice, name='dice_coe')
     return dice
-
+#==================== loss funtion ===============
 dice_score = dice_coe(model_predict, label_holder)
-loss = 1 - dice_score
+seg_loss = 1 - dice_score
 
+adverse_loss = 0
+for i in range(len(critic_true)):
+    layer_abs = tf.abs(critic_true[i]-critic_false[i])
+    layer_mean = tf.reduce_mean(layer_abs)
+    adverse_loss += layer_mean
+
+loss = seg_loss + 0.5 * adverse_loss
 #==============optimization function============
 
 variable_list = tf.trainable_variables()
@@ -121,13 +134,14 @@ def main(task):
         saver.restore(sess, os.path.join(check_dir,'u_net_{}.ckpt'.format(task)))
         f = np.loadtxt(os.path.join(check_dir,'u_net_{}.txt'.format(task)))
         step = np.int(f)
-        print('Restor step {} well.'.format(step))
+        print('Restor task {1} step {0} well.'.format(step, task))
     #---------------------prepare data well------
     print('data process over')
     for i in range(epoch):   
         num_batch = len(data)//BATCH_SIZE
         print('Each epoch contains {} stps'.format(num_batch))
         loss_list = []
+        adverse_list = []
         start_epoch = time.time()
         for j in range(num_batch):
             start = time.time()
@@ -142,18 +156,22 @@ def main(task):
             feed_dict = {input_holder: batch_data, label_holder:batch_label}
             sess.run(optimization, feed_dict)
             loss_list.append(sess.run(loss, feed_dict=feed_dict))
+            adverse_list.append(sess.run(adverse_loss, feed_dict=feed_dict))
+            #----------------if seGAN used--------------
             step += 1 # count
             end = time.time() 
             if step%100 == 0:
                 interval = (end-start)*100/60
                 print('step {0}, loss {1:.3f}, took {2:.2f} min '.format(step, np.mean(loss_list), interval))
+                print('Adverse loss {0:.4f}\n'.format(np.mean(adverse_list)))
             if step % 500 == 0:
                 saver.save(sess, check_dir+'u_net_{0}.ckpt'.format(task))
                 np.savetxt(check_dir+'u_net_{0}.txt'.format(task), [step])
         end_epoch = time.time()
         print('Task {2} Epoch {0}/{1}'.format(i+1, epoch, task))
         print('Take {:.2f} min'.format((end_epoch-start_epoch)/60))
-        print('loss {:.4f} \n'.format(np.mean(loss_list)))
+        print('loss {:.4f} '.format(np.mean(loss_list)))
+        print('adverse loss {:.4f}\n'.format(np.mean(adverse_list)))
     return 0
     
 if __name__ == '__main__':

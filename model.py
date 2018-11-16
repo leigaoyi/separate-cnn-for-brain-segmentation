@@ -105,14 +105,33 @@ def u_net(inputs, reuse=False):
         return conv10
         
 def critic(inputs, reuse=False):
-    
-    return 0
+    '''
+    inputs : mask of seg and MRI data, [10, 128, 128, 4]
+    outputs : layers output 
+    '''
+    with tf.variable_scope('critic', reuse=reuse):
+        conv1 = slim.conv2d(inputs, 64, 4, stride=2)
+        conv1 = tf.nn.leaky_relu(conv1)
+        
+        conv2 = slim.conv2d(conv1, 128, 4, stride=2)
+        conv2 = tf.nn.leaky_relu(conv2)
+        
+        conv3 = slim.conv2d(conv2, 256, 4, stride=2)
+        conv3 = tf.nn.leaky_relu(conv3)
+        
+        conv4 = slim.conv2d(conv3, 512, 4, stride=2)
+        conv4 = tf.nn.leaky_relu(conv4)
+        
+        all_layers = [inputs, conv1, conv2, conv3, conv4]
+    return all_layers
 
 
 if __name__ == '__main__':
     x = tf.placeholder(tf.float32, [10, 128, 128, 4])        
     predict = u_net(x)
+    critic_seg = critic(x)
     print(predict.shape)
+    print('length ', len(critic_seg))
     total_parameters = 0
     for variable in tf.trainable_variables():
     # shape is an array of tf.DimensiWon

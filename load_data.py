@@ -12,10 +12,10 @@ import nibabel as nib
 
 #======================Setting================
 DATA_SIZE = 'small' # (small, half or all)
-HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
-LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
-#HGG_data_path = 'data/temp/HGG'
-#LGG_data_path = 'data/temp/LGG'
+#HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
+#LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
+HGG_data_path = 'data/temp/HGG'
+LGG_data_path = 'data/temp/LGG'
 
 
 

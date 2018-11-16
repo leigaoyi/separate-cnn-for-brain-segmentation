@@ -14,17 +14,17 @@ from tqdm import tqdm
 from model import build_model
 
 task = 'all' #all, edema, necrotic, enhance
-test_type = 'half' #small, half, all
+test_type = 'small' #small, half, all
 save_dir = 'checkpoints'
 save_hgg_path = './result/{0}/HGG/'.format(str(task))
 save_lgg_path = './result/{0}/LGG/'.format(str(task))
 data_path = './data/MICCAI_BraTS17_Data_Training/HGG/' # ubuntu data path
 #data_path = './data/MICCAI_BraTS17_Data_Training_IPP/MICCAI_BraTS17_Data_Training/HGG/' #windows
 batch_size = 10
-HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
-LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
-#HGG_data_path = 'data/temp/HGG'
-#LGG_data_path = 'data/temp/LGG'
+#HGG_data_path = "data/MICCAI_BraTS17_Data_Training/HGG"
+#LGG_data_path = "data/MICCAI_BraTS17_Data_Training/LGG"
+HGG_data_path = 'data/temp/HGG'
+LGG_data_path = 'data/temp/LGG'
 
 
 
@@ -223,8 +223,9 @@ for i in tqdm(range(len(LGG_name_list))):
 np.savetxt('./result/{}_lgg_dice.txt'.format(task), lgg_dice_list)
 print('task : {}'.format(task))
 print('step : {}'.format(step))
-print('HGG cases {0}, LGG cases {1}'.format(len(HGG_name_list), len(LGG_name_list)))
+print('HGG cases {0}'.format(len(HGG_name_list)))
 print('HGG dice mean {:.4f}'.format(np.mean(hgg_dice_list)))
 print('HGG dice median {:.4f}'.format(np.median(hgg_dice_list)))
+print('LGG cases {}'.format(len(LGG_name_list)))
 print('LGG dice mean {:.4f}'.format(np.mean(lgg_dice_list)))
 print('LGG dice median {:.4f}'.format(np.median(lgg_dice_list)))
