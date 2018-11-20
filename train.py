@@ -30,10 +30,11 @@ if not os.path.exists(check_dir):
 
 #================build_model============
 model_predict = build_model(input_holder)
-critic_true = critic(input_holder, label_holder)
-critic_false = critic(input_holder, model_predict, reuse=True)
-fake_last_layer = tf.reduce_mean(tf.abs(critic_false[-1]))
-
+false_mask = mask_seg_input(input_holder, model_predict)
+fake_last_layer = tf.reduce_mean(tf.abs(false_mask[-1]))
+true_mask = mask_seg_input(input_holder, label_holder)
+critic_true = critic(true_mask)
+critic_false = critic(false_mask, reuse=True)
 #================dice function============
 def dice_coe(output, target, loss_type='jaccard', axis=(0, 1, 2, 3), smooth=1e-5):
     """Soft dice (Sørensen or Jaccard) coefficient for comparing the similarity
